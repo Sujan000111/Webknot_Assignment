@@ -1,11 +1,11 @@
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   View,
   ScrollView,
   StyleSheet,
   FlatList,
   TouchableOpacity,
-  RefreshControl,
+  Alert,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Colors } from '@/constants/Colors';
@@ -13,7 +13,9 @@ import { Layout } from '@/constants/Layout';
 import { ThemedText } from '@/components/ui/ThemedText';
 import { ThemedView } from '@/components/ui/ThemedView';
 import { EventCard } from '@/components/ui/EventCard';
-import { Event } from '@/types';
+import { Event } from '@/types/shared';
+import { ApiService } from '@/services/api';
+import { useAuth } from '@/hooks/useAuth';
 import { 
   Code, 
   Wrench, 
@@ -25,96 +27,74 @@ import {
   Bell
 } from 'lucide-react-native';
 
-// Mock data for demonstration
-const featuredEvents: Event[] = [
-  {
-    id: '1',
-    title: 'AI & ML Hackathon 2024',
-    description: 'Build innovative AI solutions in 48 hours',
-    type: 'hackathon',
-    startDate: '2024-02-15T09:00:00Z',
-    endDate: '2024-02-17T18:00:00Z',
-    venue: 'Tech Hub, Main Campus',
-    capacity: 200,
-    registeredCount: 156,
-    imageUrl: 'https://images.pexels.com/photos/3861969/pexels-photo-3861969.jpeg',
-    organizer: 'Computer Science Dept',
-    isFeatured: true,
-    rating: 4.8,
-    reviewCount: 45,
-  },
-  {
-    id: '2',
-    title: 'React Native Workshop',
-    description: 'Learn mobile app development from scratch',
-    type: 'workshop',
-    startDate: '2024-02-18T14:00:00Z',
-    endDate: '2024-02-18T17:00:00Z',
-    venue: 'Lab 1, IT Block',
-    capacity: 50,
-    registeredCount: 32,
-    imageUrl: 'https://images.pexels.com/photos/1181671/pexels-photo-1181671.jpeg',
-    organizer: 'Mobile Dev Club',
-    isFeatured: true,
-    rating: 4.6,
-    reviewCount: 28,
-  },
-];
-
-const upcomingEvents: Event[] = [
-  {
-    id: '3',
-    title: 'Tech Talk: Future of Web Development',
-    description: 'Industry expert shares insights on web tech trends',
-    type: 'techTalk',
-    startDate: '2024-02-20T16:00:00Z',
-    endDate: '2024-02-20T17:30:00Z',
-    venue: 'Main Auditorium',
-    capacity: 300,
-    registeredCount: 145,
-    imageUrl: 'https://images.pexels.com/photos/1181263/pexels-photo-1181263.jpeg',
-    organizer: 'Tech Society',
-    isFeatured: false,
-    rating: 4.7,
-    reviewCount: 67,
-  },
-  {
-    id: '4',
-    title: 'Data Science Competition',
-    description: 'Compete in data analysis and visualization challenges',
-    type: 'competition',
-    startDate: '2024-02-25T10:00:00Z',
-    endDate: '2024-02-25T16:00:00Z',
-    venue: 'Analytics Lab',
-    capacity: 100,
-    registeredCount: 78,
-    imageUrl: 'https://images.pexels.com/photos/669615/pexels-photo-669615.jpeg',
-    organizer: 'Data Science Club',
-    isFeatured: false,
-    rating: 4.5,
-    reviewCount: 34,
-    isRegistered: true,
-  },
-];
-
 const categories = [
-  { id: 'hackathon', name: 'Hackathons', icon: Code, color: Colors.accent, count: 3 },
-  { id: 'workshop', name: 'Workshops', icon: Wrench, color: Colors.success, count: 8 },
-  { id: 'techTalk', name: 'Tech Talks', icon: Mic, color: Colors.secondary, count: 5 },
-  { id: 'seminar', name: 'Seminars', icon: BookOpen, color: Colors.primary, count: 12 },
-  { id: 'fest', name: 'Fests', icon: PartyPopper, color: Colors.pink, count: 2 },
-  { id: 'competition', name: 'Competitions', icon: Trophy, color: '#ef4444', count: 6 },
+  { id: 'hackathon', name: 'Hackathons', icon: Code, color: Colors.accent },
+  { id: 'workshop', name: 'Workshops', icon: Wrench, color: Colors.success },
+  { id: 'techTalk', name: 'Tech Talks', icon: Mic, color: Colors.secondary },
+  { id: 'seminar', name: 'Seminars', icon: BookOpen, color: Colors.primary },
+  { id: 'fest', name: 'Fests', icon: PartyPopper, color: Colors.pink },
+  { id: 'competition', name: 'Competitions', icon: Trophy, color: '#ef4444' },
 ];
 
 export default function HomeScreen() {
-  const [refreshing, setRefreshing] = React.useState(false);
+  const [featuredEvents, setFeaturedEvents] = useState<Event[]>([]);
+  const [upcomingEvents, setUpcomingEvents] = useState<Event[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
+  const [stats, setStats] = useState({
+    registered: 0,
+    attended: 0,
+    averageRating: 0,
+  });
+  const { appUser } = useAuth();
 
-  const onRefresh = React.useCallback(() => {
+  const loadEvents = async () => {
+    try {
+      setLoading(true);
+      const response = await ApiService.getEvents(1, 20);
+      const events = response.data;
+      
+      // Filter featured events (you can add a featured flag to your database)
+      const featured = events.filter(event => event.isFeatured).slice(0, 2);
+      const upcoming = events.filter(event => new Date(event.startDate) > new Date()).slice(0, 4);
+      
+      setFeaturedEvents(featured);
+      setUpcomingEvents(upcoming);
+    } catch (error) {
+      console.error('Error loading events:', error);
+      Alert.alert('Error', 'Failed to load events. Please try again.');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const loadStats = async () => {
+    try {
+      if (!appUser) return;
+      
+      const registrations = await ApiService.getMyRegistrations();
+      const attendedEvents = registrations.filter(reg => reg.status === 'confirmed');
+      
+      setStats({
+        registered: registrations.length,
+        attended: attendedEvents.length,
+        averageRating: 4.6, // This would come from feedback data
+      });
+    } catch (error) {
+      console.error('Error loading stats:', error);
+    }
+  };
+
+  const onRefresh = async () => {
     setRefreshing(true);
-    setTimeout(() => {
-      setRefreshing(false);
-    }, 1000);
-  }, []);
+    await Promise.all([loadEvents(), loadStats()]);
+    setRefreshing(false);
+  };
+
+  useEffect(() => {
+    loadEvents();
+    loadStats();
+  }, [appUser]);
 
   const renderFeaturedEvent = ({ item }: { item: Event }) => (
     <EventCard event={item} variant="featured" />
@@ -128,30 +108,30 @@ export default function HomeScreen() {
       <ThemedText variant="default" style={styles.categoryName}>
         {item.name}
       </ThemedText>
-      <ThemedText variant="caption" style={styles.categoryCount}>
-        {item.count} events
-      </ThemedText>
     </TouchableOpacity>
   );
+
+  if (loading) {
+    return (
+      <SafeAreaView style={styles.container}>
+        <View style={styles.loadingContainer}>
+          <ThemedText>Loading events...</ThemedText>
+        </View>
+      </SafeAreaView>
+    );
+  }
 
   return (
     <SafeAreaView style={styles.container}>
       <ScrollView
         style={styles.scrollView}
-        refreshControl={
-          <RefreshControl
-            refreshing={refreshing}
-            onRefresh={onRefresh}
-            tintColor={Colors.primary}
-          />
-        }
       >
         {/* Header */}
         <View style={styles.header}>
           <View>
             <ThemedText variant="title">Welcome back! 👋</ThemedText>
             <ThemedText variant="caption" style={styles.subtitle}>
-              Discover amazing events at MVJCE
+              {appUser ? `Hello, ${appUser.firstName}!` : 'Discover amazing events'}
             </ThemedText>
           </View>
           <TouchableOpacity style={styles.notificationButton}>
@@ -167,36 +147,38 @@ export default function HomeScreen() {
         {/* Quick Stats */}
         <View style={styles.statsContainer}>
           <ThemedView variant="card" style={styles.statCard}>
-            <ThemedText variant="title" color={Colors.primary}>12</ThemedText>
+            <ThemedText variant="title" color={Colors.primary}>{stats.registered}</ThemedText>
             <ThemedText variant="caption">Registered</ThemedText>
           </ThemedView>
           <ThemedView variant="card" style={styles.statCard}>
-            <ThemedText variant="title" color={Colors.success}>8</ThemedText>
+            <ThemedText variant="title" color={Colors.success}>{stats.attended}</ThemedText>
             <ThemedText variant="caption">Attended</ThemedText>
           </ThemedView>
           <ThemedView variant="card" style={styles.statCard}>
-            <ThemedText variant="title" color={Colors.secondary}>4.6⭐</ThemedText>
+            <ThemedText variant="title" color={Colors.secondary}>{stats.averageRating}⭐</ThemedText>
             <ThemedText variant="caption">Avg Rating</ThemedText>
           </ThemedView>
         </View>
 
         {/* Featured Events */}
-        <View style={styles.section}>
-          <View style={styles.sectionHeader}>
-            <ThemedText variant="subtitle">Featured Events</ThemedText>
-            <TouchableOpacity style={styles.seeAllButton}>
-              <ThemedText variant="caption" color={Colors.primary}>See All</ThemedText>
-              <ChevronRight size={16} color={Colors.primary} />
-            </TouchableOpacity>
+        {featuredEvents.length > 0 && (
+          <View style={styles.section}>
+            <View style={styles.sectionHeader}>
+              <ThemedText variant="subtitle">Featured Events</ThemedText>
+              <TouchableOpacity style={styles.seeAllButton}>
+                <ThemedText variant="caption" color={Colors.primary}>See All</ThemedText>
+                <ChevronRight size={16} color={Colors.primary} />
+              </TouchableOpacity>
+            </View>
+            <FlatList
+              data={featuredEvents}
+              renderItem={renderFeaturedEvent}
+              horizontal
+              showsHorizontalScrollIndicator={false}
+              contentContainerStyle={styles.featuredList}
+            />
           </View>
-          <FlatList
-            data={featuredEvents}
-            renderItem={renderFeaturedEvent}
-            horizontal
-            showsHorizontalScrollIndicator={false}
-            contentContainerStyle={styles.featuredList}
-          />
-        </View>
+        )}
 
         {/* Categories */}
         <View style={styles.section}>
@@ -213,18 +195,32 @@ export default function HomeScreen() {
         </View>
 
         {/* Upcoming Events */}
-        <View style={styles.section}>
-          <View style={styles.sectionHeader}>
-            <ThemedText variant="subtitle">Upcoming Events</ThemedText>
-            <TouchableOpacity style={styles.seeAllButton}>
-              <ThemedText variant="caption" color={Colors.primary}>See All</ThemedText>
-              <ChevronRight size={16} color={Colors.primary} />
-            </TouchableOpacity>
+        {upcomingEvents.length > 0 && (
+          <View style={styles.section}>
+            <View style={styles.sectionHeader}>
+              <ThemedText variant="subtitle">Upcoming Events</ThemedText>
+              <TouchableOpacity style={styles.seeAllButton}>
+                <ThemedText variant="caption" color={Colors.primary}>See All</ThemedText>
+                <ChevronRight size={16} color={Colors.primary} />
+              </TouchableOpacity>
+            </View>
+            {upcomingEvents.map((event) => (
+              <EventCard key={event.id} event={event} />
+            ))}
           </View>
-          {upcomingEvents.map((event) => (
-            <EventCard key={event.id} event={event} />
-          ))}
-        </View>
+        )}
+
+        {/* No Events Message */}
+        {featuredEvents.length === 0 && upcomingEvents.length === 0 && (
+          <View style={styles.emptyContainer}>
+            <ThemedText variant="subtitle" style={styles.emptyTitle}>
+              No Events Available
+            </ThemedText>
+            <ThemedText variant="caption" style={styles.emptyMessage}>
+              Check back later for new events!
+            </ThemedText>
+          </View>
+        )}
       </ScrollView>
     </SafeAreaView>
   );
@@ -237,6 +233,11 @@ const styles = StyleSheet.create({
   },
   scrollView: {
     flex: 1,
+  },
+  loadingContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
   },
   header: {
     flexDirection: 'row',
@@ -330,7 +331,14 @@ const styles = StyleSheet.create({
     marginBottom: Layout.spacing.xs,
     fontWeight: '600',
   },
-  categoryCount: {
+  emptyContainer: {
+    alignItems: 'center',
+    padding: Layout.spacing.xl,
+  },
+  emptyTitle: {
+    marginBottom: Layout.spacing.sm,
+  },
+  emptyMessage: {
     textAlign: 'center',
   },
 });

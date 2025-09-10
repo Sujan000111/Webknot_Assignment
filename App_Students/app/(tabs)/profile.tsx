@@ -1,37 +1,21 @@
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   View,
   ScrollView,
   StyleSheet,
   TouchableOpacity,
   Image,
+  Alert,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Colors } from '@/constants/Colors';
 import { Layout } from '@/constants/Layout';
 import { ThemedText } from '@/components/ui/ThemedText';
 import { ThemedView } from '@/components/ui/ThemedView';
+import { useAuth } from '@/hooks/useAuth';
+import { ApiService } from '@/services/api';
+import { router } from 'expo-router';
 import { User, Calendar, Award, Settings, Bell, CircleHelp as HelpCircle, LogOut, CreditCard as Edit3, Camera, Star, TrendingUp, Clock, Trophy } from 'lucide-react-native';
-
-// Mock user data
-const userData = {
-  name: 'Rahul Sharma',
-  studentId: 'MVJCE2021CS001',
-  email: 'rahul.sharma@mvjce.edu.in',
-  college: 'MVJCE, Bangalore',
-  department: 'Computer Science',
-  yearOfStudy: 3,
-  profileImage: 'https://images.pexels.com/photos/2379004/pexels-photo-2379004.jpeg',
-};
-
-const stats = {
-  eventsRegistered: 15,
-  eventsAttended: 12,
-  attendanceRate: 80,
-  averageRating: 4.6,
-  achievementPoints: 1250,
-  streak: 5,
-};
 
 const achievements = [
   { id: 1, name: 'Early Bird', description: 'Registered for 5 events in advance', icon: '🐦', earned: true },
@@ -41,14 +25,92 @@ const achievements = [
   { id: 5, name: 'Networking Pro', description: 'Connected with 20+ attendees', icon: '🤝', earned: false },
 ];
 
-const recentActivity = [
-  { id: 1, type: 'registration', event: 'AI & ML Hackathon 2024', date: '2024-02-10', icon: Calendar },
-  { id: 2, type: 'attendance', event: 'React Workshop - Basics', date: '2024-01-15', icon: Award },
-  { id: 3, type: 'feedback', event: 'Tech Talk: Future of Web', date: '2024-01-10', rating: 5, icon: Star },
-  { id: 4, type: 'achievement', event: 'Earned Regular Attendee badge', date: '2024-01-05', icon: Trophy },
-];
-
 export default function ProfileScreen() {
+  const { appUser, signOut } = useAuth();
+  const [stats, setStats] = useState({
+    eventsRegistered: 0,
+    eventsAttended: 0,
+    attendanceRate: 0,
+    averageRating: 0,
+    achievementPoints: 0,
+    streak: 0,
+  });
+  const [loading, setLoading] = useState(true);
+
+  const loadStats = async () => {
+    try {
+      if (!appUser) return;
+
+      const registrations = await ApiService.getMyRegistrations();
+      const attendedEvents = registrations.filter(reg => reg.status === 'confirmed');
+      
+      setStats({
+        eventsRegistered: registrations.length,
+        eventsAttended: attendedEvents.length,
+        attendanceRate: registrations.length > 0 ? Math.round((attendedEvents.length / registrations.length) * 100) : 0,
+        averageRating: 4.6, // This would come from feedback data
+        achievementPoints: attendedEvents.length * 50,
+        streak: 5, // This would be calculated from attendance patterns
+      });
+    } catch (error) {
+      console.error('Error loading stats:', error);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    loadStats();
+  }, [appUser]);
+
+  const handleSignOut = async () => {
+    Alert.alert(
+      'Sign Out',
+      'Are you sure you want to sign out?',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        { 
+          text: 'Sign Out', 
+          style: 'destructive',
+          onPress: async () => {
+            try {
+              await signOut();
+              router.replace('/signin');
+            } catch (error) {
+              Alert.alert('Error', 'Failed to sign out. Please try again.');
+            }
+          }
+        },
+      ]
+    );
+  };
+
+  if (!appUser) {
+    return (
+      <SafeAreaView style={styles.container}>
+        <View style={styles.loadingContainer}>
+          <ThemedText>Please sign in to view your profile</ThemedText>
+        </View>
+      </SafeAreaView>
+    );
+  }
+
+  const recentActivity = [
+    { id: 1, type: 'registration', event: 'AI & ML Hackathon 2024', date: '2024-02-10', icon: Calendar },
+    { id: 2, type: 'attendance', event: 'React Workshop - Basics', date: '2024-01-15', icon: Award },
+    { id: 3, type: 'feedback', event: 'Tech Talk: Future of Web', date: '2024-01-10', rating: 5, icon: Star },
+    { id: 4, type: 'achievement', event: 'Earned Regular Attendee badge', date: '2024-01-05', icon: Trophy },
+  ];
+
+  if (loading) {
+    return (
+      <SafeAreaView style={styles.container}>
+        <View style={styles.loadingContainer}>
+          <ThemedText>Loading profile...</ThemedText>
+        </View>
+      </SafeAreaView>
+    );
+  }
   const renderStatCard = (title: string, value: string | number, subtitle?: string, icon?: any) => {
     const IconComponent = icon;
     return (
@@ -139,23 +201,26 @@ export default function ProfileScreen() {
         <ThemedView variant="card" style={styles.profileCard}>
           <View style={styles.profileHeader}>
             <View style={styles.profileImageContainer}>
-              <Image source={{ uri: userData.profileImage }} style={styles.profileImage} />
+              <Image 
+                source={{ uri: appUser.profileImage || 'https://via.placeholder.com/100' }} 
+                style={styles.profileImage} 
+              />
               <TouchableOpacity style={styles.cameraButton}>
                 <Camera size={16} color={Colors.background} />
               </TouchableOpacity>
             </View>
             <View style={styles.profileInfo}>
               <ThemedText variant="subtitle" style={styles.profileName}>
-                {userData.name}
+                {appUser.firstName} {appUser.lastName}
               </ThemedText>
               <ThemedText variant="caption" style={styles.studentId}>
-                {userData.studentId}
+                {appUser.studentId}
               </ThemedText>
               <ThemedText variant="caption" style={styles.college}>
-                {userData.department}, Year {userData.yearOfStudy}
+                {appUser.department}, Year {appUser.yearOfStudy}
               </ThemedText>
               <ThemedText variant="caption" style={styles.email}>
-                {userData.email}
+                {appUser.email}
               </ThemedText>
             </View>
           </View>
@@ -443,5 +508,10 @@ const styles = StyleSheet.create({
     borderTopColor: Colors.gray[200],
     marginTop: Layout.spacing.sm,
     paddingTop: Layout.spacing.lg,
+  },
+  loadingContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
   },
 });

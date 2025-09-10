@@ -24,67 +24,16 @@ interface Notification {
   eventId?: string;
 }
 
-const notifications: Notification[] = [
-  {
-    id: '1',
-    type: 'event_reminder',
-    title: 'Event Starting Soon',
-    message: 'AI & ML Hackathon 2024 starts in 1 hour. Don\'t forget to check in!',
-    timestamp: '2024-02-15T08:00:00Z',
-    read: false,
-    actionRequired: true,
-    eventId: '1',
-  },
-  {
-    id: '2',
-    type: 'registration_confirmed',
-    title: 'Registration Confirmed',
-    message: 'You\'re registered for React Native Workshop on Feb 18, 2024.',
-    timestamp: '2024-02-14T15:30:00Z',
-    read: false,
-    eventId: '2',
-  },
-  {
-    id: '3',
-    type: 'feedback_request',
-    title: 'Share Your Experience',
-    message: 'How was the Web Development Workshop? Your feedback helps improve future events.',
-    timestamp: '2024-02-13T18:00:00Z',
-    read: true,
-    actionRequired: true,
-    eventId: '3',
-  },
-  {
-    id: '4',
-    type: 'achievement',
-    title: 'Achievement Unlocked! 🏆',
-    message: 'Congratulations! You\'ve earned the "Regular Attendee" badge.',
-    timestamp: '2024-02-12T10:00:00Z',
-    read: true,
-  },
-  {
-    id: '5',
-    type: 'new_event',
-    title: 'New Event Available',
-    message: 'Annual Tech Fest 2024 registration is now open. Limited seats available!',
-    timestamp: '2024-02-10T09:00:00Z',
-    read: true,
-    eventId: '5',
-  },
-  {
-    id: '6',
-    type: 'event_reminder',
-    title: 'Event Tomorrow',
-    message: 'Don\'t forget: Data Science Competition is tomorrow at 10:00 AM.',
-    timestamp: '2024-02-09T20:00:00Z',
-    read: true,
-    eventId: '4',
-  },
-];
-
 export default function NotificationsScreen() {
-  const [notificationList, setNotificationList] = useState(notifications);
+  const [notificationList, setNotificationList] = useState<Notification[]>([]);
+  const [loading, setLoading] = useState(true);
   const [filter, setFilter] = useState<'all' | 'unread'>('all');
+
+  useEffect(() => {
+    // TODO: Load notifications from Supabase
+    // For now, we'll show empty state
+    setLoading(false);
+  }, []);
 
   const getNotificationIcon = (type: Notification['type']) => {
     switch (type) {
@@ -443,5 +392,10 @@ const styles = StyleSheet.create({
   emptyStateSubtext: {
     textAlign: 'center',
     maxWidth: 280,
+  },
+  loadingContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
   },
 });
