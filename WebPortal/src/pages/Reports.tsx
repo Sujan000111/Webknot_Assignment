@@ -50,6 +50,25 @@ const Reports = () => {
     enabled: isSupabaseReady,
   });
 
+  // Student Participation: number of events each student attended
+  const { data: participation = [], isLoading: loadingParticipation } = useQuery({
+    queryKey: ["report-student-participation", dateRange],
+    queryFn: async () => {
+      const { data, error } = await supabase!
+        .from("top_active_students")
+        .select("full_name, college_name, events_attended");
+      if (error) throw error;
+      return (
+        data?.map((r) => ({
+          name: (r.full_name as string) || "-",
+          department: (r.college_name as string) || "-",
+          eventsAttended: (r.events_attended as number) ?? 0,
+        })) ?? []
+      );
+    },
+    enabled: isSupabaseReady,
+  });
+
   const { data: eventTypeStats = [], isLoading: loadingTypes } = useQuery({
     queryKey: ["report-type-stats", dateRange],
     queryFn: async () => {
@@ -241,48 +260,31 @@ const Reports = () => {
               </CardTitle>
             </CardHeader>
             <CardContent>
-              <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-                {/* Participation Levels */}
-                <div>
-                  <h3 className="text-lg font-semibold mb-4">Participation Levels</h3>
-                  <div className="space-y-3">
-                    <div className="flex items-center justify-between p-3 rounded-lg bg-success/10 border border-success/20">
-                      <span className="font-medium">High Participation (10+ events)</span>
-                      <span className="text-xl font-bold text-success">3 students</span>
-                    </div>
-                    <div className="flex items-center justify-between p-3 rounded-lg bg-warning/10 border border-warning/20">
-                      <span className="font-medium">Medium Participation (5-9 events)</span>
-                      <span className="text-xl font-bold text-warning">2 students</span>
-                    </div>
-                    <div className="flex items-center justify-between p-3 rounded-lg bg-muted/50 border border-border">
-                      <span className="font-medium">Low Participation (&lt; 5 events)</span>
-                      <span className="text-xl font-bold text-muted-foreground">1 student</span>
-                    </div>
-                  </div>
-                </div>
-
-                {/* Department Wise */}
-                <div>
-                  <h3 className="text-lg font-semibold mb-4">Department-wise Participation</h3>
-                  <div className="space-y-3">
-                    {[
-                      { dept: "Computer Science", students: 2, avgEvents: 10 },
-                      { dept: "Information Technology", students: 2, avgEvents: 8.5 },
-                      { dept: "Electronics", students: 2, avgEvents: 8.5 }
-                    ].map((dept, index) => (
-                      <div key={index} className="p-3 rounded-lg border border-border">
-                        <div className="flex justify-between items-center">
-                          <span className="font-medium">{dept.dept}</span>
-                          <span className="text-sm text-muted-foreground">{dept.students} students</span>
-                        </div>
-                        <div className="mt-2 flex items-center">
-                          <span className="text-sm text-muted-foreground mr-2">Avg events:</span>
-                          <span className="font-bold text-primary">{dept.avgEvents}</span>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                </div>
+              <div className="overflow-x-auto">
+                <table className="w-full">
+                  <thead>
+                    <tr className="border-b border-border">
+                      <th className="text-left p-3 font-medium text-muted-foreground">#</th>
+                      <th className="text-left p-3 font-medium text-muted-foreground">Student Name</th>
+                      <th className="text-left p-3 font-medium text-muted-foreground">Department</th>
+                      <th className="text-left p-3 font-medium text-muted-foreground">Events Attended</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {(loadingParticipation ? [] : participation)
+                      .sort((a, b) => b.eventsAttended - a.eventsAttended)
+                      .map((student, index) => (
+                        <tr key={index} className="border-b border-border hover:bg-muted/50 transition-colors">
+                          <td className="p-3 text-muted-foreground">{index + 1}</td>
+                          <td className="p-3 font-medium">{student.name}</td>
+                          <td className="p-3 text-muted-foreground">{student.department}</td>
+                          <td className="p-3">
+                            <span className="text-lg font-bold text-primary">{student.eventsAttended}</span>
+                          </td>
+                        </tr>
+                      ))}
+                  </tbody>
+                </table>
               </div>
             </CardContent>
           </Card>
