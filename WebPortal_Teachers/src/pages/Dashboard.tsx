@@ -30,6 +30,33 @@ const Dashboard = () => {
     enabled: isSupabaseReady,
   });
 
+  const { data: attendanceAgg } = useQuery({
+    queryKey: ["dashboard-attendance-agg"],
+    queryFn: async () => {
+      const [attendanceResult, feedbackResult] = await Promise.all([
+        supabase!.from("attendance").select("id, status", { count: "exact" }),
+        supabase!.from("feedback").select("rating", { count: "exact" })
+      ]);
+
+      const totalAttendance = attendanceResult.count || 0;
+      const presentAttendance = attendanceResult.data?.filter(a => a.status === 'present').length || 0;
+      const totalRegistrations = regsAgg?.totalRegistrations || 0;
+      
+      const attendanceRate = totalRegistrations > 0 ? Math.round((presentAttendance / totalRegistrations) * 100) : 0;
+      
+      const avgFeedback = feedbackResult.data?.length ? 
+        Math.round((feedbackResult.data.reduce((sum, f) => sum + f.rating, 0) / feedbackResult.data.length) * 10) / 10 : 0;
+
+      return { 
+        attendanceRate, 
+        avgFeedback,
+        totalAttendance,
+        presentAttendance
+      };
+    },
+    enabled: isSupabaseReady && !!regsAgg,
+  });
+
   const stats = [
     {
       title: "Total Events Created",
@@ -49,16 +76,16 @@ const Dashboard = () => {
     },
     {
       title: "Attendance Rate",
-      value: "-",
-      change: "", 
+      value: `${attendanceAgg?.attendanceRate ?? 0}%`,
+      change: `${attendanceAgg?.presentAttendance ?? 0} attended`, 
       trend: "up",
       icon: TrendingUp,
       color: "text-success"
     },
     {
       title: "Average Feedback",
-      value: "-",
-      change: "",
+      value: String(attendanceAgg?.avgFeedback ?? 0),
+      change: "out of 5.0",
       trend: "up", 
       icon: Star,
       color: "text-warning"
@@ -87,7 +114,24 @@ const Dashboard = () => {
     enabled: isSupabaseReady,
   });
 
-  const topStudents: { name: string; events: number; badge: string }[] = [];
+  const { data: topStudents = [] } = useQuery({
+    queryKey: ["dashboard-top-students"],
+    queryFn: async () => {
+      const { data, error } = await supabase!
+        .from("top_active_students")
+        .select("full_name, events_attended")
+        .limit(3);
+      if (error) throw error;
+      return (
+        data?.map((student, index) => ({
+          name: student.full_name,
+          events: student.events_attended,
+          badge: index < 3 ? ["🥇", "🥈", "🥉"][index] : ""
+        })) ?? []
+      );
+    },
+    enabled: isSupabaseReady,
+  });
 
   return (
     <div className="space-y-8 animate-fade-up">

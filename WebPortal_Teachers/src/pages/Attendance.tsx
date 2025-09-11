@@ -50,10 +50,11 @@ const Attendance = () => {
       let query = supabase!
         .from("registrations")
         .select(`
-          *,
-          students(first_name, last_name, student_id, email, department, year_of_study),
-          events(title, start_date, end_date),
-          attendance(id, status, notes)
+          id,
+          student_id,
+          event_id,
+          registration_date,
+          status
         `)
         .eq("status", "registered"); // Only get registered students
 
@@ -61,15 +62,72 @@ const Attendance = () => {
         query = query.eq("event_id", selectedEvent);
       }
 
-      const { data, error } = await query;
+      const { data: registrationsData, error } = await query;
       
       if (error) {
         console.error("Registration query error:", error);
         throw error;
       }
       
-      console.log("Registrations data:", data);
-      return data ?? [];
+      if (!registrationsData || registrationsData.length === 0) {
+        console.log("No registrations found");
+        return [];
+      }
+      
+      // Fetch related data separately
+      const studentIds = [...new Set(registrationsData.map(r => r.student_id))];
+      const eventIds = [...new Set(registrationsData.map(r => r.event_id))];
+      const registrationIds = registrationsData.map(r => r.id);
+      
+      // Fetch students
+      const { data: studentsData, error: studentsError } = await supabase!
+        .from("students")
+        .select("id, first_name, last_name, student_id, email, department, year_of_study")
+        .in("id", studentIds);
+      
+      if (studentsError) {
+        console.error("Students query error:", studentsError);
+        throw studentsError;
+      }
+      
+      // Fetch events
+      const { data: eventsData, error: eventsError } = await supabase!
+        .from("events")
+        .select("id, title, start_date, end_date")
+        .in("id", eventIds);
+      
+      if (eventsError) {
+        console.error("Events query error:", eventsError);
+        throw eventsError;
+      }
+      
+      // Fetch attendance
+      const { data: attendanceData, error: attendanceError } = await supabase!
+        .from("attendance")
+        .select("id, registration_id, status, notes")
+        .in("registration_id", registrationIds);
+      
+      if (attendanceError) {
+        console.error("Attendance query error:", attendanceError);
+        throw attendanceError;
+      }
+      
+      // Combine the data
+      const combinedData = registrationsData.map(registration => {
+        const student = studentsData?.find(s => s.id === registration.student_id);
+        const event = eventsData?.find(e => e.id === registration.event_id);
+        const attendance = attendanceData?.find(a => a.registration_id === registration.id);
+        
+        return {
+          ...registration,
+          students: student || null,
+          events: event || null,
+          attendance: attendance || null
+        };
+      });
+      
+      console.log("Combined registrations data:", combinedData);
+      return combinedData;
     },
     enabled: isSupabaseReady,
   });
@@ -306,57 +364,6 @@ const Attendance = () => {
         </CardContent>
       </Card>
 
-      {/* Debug Info */}
-      {process.env.NODE_ENV === 'development' && (
-        <Card className="card-elevated border-yellow-200 bg-yellow-50">
-          <CardHeader>
-            <CardTitle className="text-yellow-800">Debug Information</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="text-sm text-yellow-700 space-y-2">
-              <p><strong>Selected Event:</strong> {selectedEvent}</p>
-              <p><strong>Total Registrations:</strong> {registrations.length}</p>
-              <p><strong>Filtered Registrations:</strong> {filteredRegistrations.length}</p>
-              <p><strong>Events Available:</strong> {events.length}</p>
-              <p><strong>Students in DB:</strong> {allStudents.length}</p>
-              <p><strong>All Registrations in DB:</strong> {allRegistrations.length}</p>
-              {queryError && <p className="text-red-600"><strong>Error:</strong> {(queryError as any)?.message}</p>}
-              {allStudents.length > 0 && (
-                <div>
-                  <p><strong>Sample Students:</strong></p>
-                  <ul className="ml-4">
-                    {allStudents.map(student => (
-                      <li key={student.id}>- {student.first_name} {student.last_name} ({student.student_id})</li>
-                    ))}
-                  </ul>
-                </div>
-              )}
-              {allRegistrations.length > 0 && (
-                <div>
-                  <p><strong>Sample Registrations:</strong></p>
-                  <ul className="ml-4">
-                    {allRegistrations.map(reg => (
-                      <li key={reg.id}>- Student: {reg.student_id}, Event: {reg.event_id}, Status: {reg.status}</li>
-                    ))}
-                  </ul>
-                </div>
-              )}
-              {allRegistrations.length === 0 && allStudents.length > 0 && events.length > 0 && (
-                <div className="mt-4">
-                  <Button 
-                    onClick={() => createTestRegistration.mutate()}
-                    disabled={createTestRegistration.isPending}
-                    size="sm"
-                    variant="outline"
-                  >
-                    {createTestRegistration.isPending ? "Creating..." : "Create Test Registration"}
-                  </Button>
-                </div>
-              )}
-            </div>
-          </CardContent>
-        </Card>
-      )}
 
       {/* Stats Cards */}
       <div className="grid grid-cols-1 md:grid-cols-4 gap-4">

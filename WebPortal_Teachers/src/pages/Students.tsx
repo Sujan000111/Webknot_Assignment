@@ -10,6 +10,8 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from 
 import { Label } from "@/components/ui/label";
 import { Select, SelectTrigger, SelectValue, SelectContent, SelectItem } from "@/components/ui/select";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { testSupabaseConnection, createSampleStudents, checkDatabasePermissions } from "@/utils/testSupabase";
+import { createAllSampleData, createEventTypes, createVenues, createSampleEvents, createSampleRegistrations } from "@/utils/createSampleData";
 
 const Students = () => {
   const [searchTerm, setSearchTerm] = useState("");
@@ -26,17 +28,42 @@ const Students = () => {
     college_id?: string;
   };
 
-  const { data: students = [], isLoading } = useQuery({
+  const { data: students = [], isLoading, error, isError, refetch } = useQuery({
     queryKey: ["students", { searchTerm }],
     queryFn: async (): Promise<StudentRow[]> => {
-      const { data, error } = await supabase!
+      console.log("Fetching students from Supabase...");
+      if (!supabase) {
+        throw new Error("Supabase client not initialized");
+      }
+      
+      // First, let's check if the table exists and get a count
+      const { count, error: countError } = await supabase
         .from("students")
-        .select("id,first_name,last_name,email,student_id,department,year_of_study,is_active")
+        .select("*", { count: "exact", head: true });
+      
+      console.log("Total students in database:", count);
+      if (countError) {
+        console.error("Count error:", countError);
+      }
+      
+      // Now fetch the actual data
+      const { data, error } = await supabase
+        .from("students")
+        .select("id,first_name,last_name,email,student_id,department,year_of_study,is_active,college_id")
         .order("first_name", { ascending: true });
-      if (error) throw error;
+      
+      if (error) {
+        console.error("Supabase error:", error);
+        throw error;
+      }
+      
+      console.log("Students fetched successfully:", data?.length || 0, "students");
+      console.log("Sample student data:", data?.[0]);
       return data ?? [];
     },
     enabled: isSupabaseReady,
+    retry: 2,
+    staleTime: 0, // Disable caching for now to see fresh data
   });
 
   const { data: colleges = [] } = useQuery({
@@ -114,6 +141,7 @@ const Students = () => {
 
   return (
     <div className="space-y-6 animate-fade-up">
+
       {/* Header */}
       <div className="flex flex-col md:flex-row md:items-center md:justify-between space-y-4 md:space-y-0">
         <div>
@@ -267,10 +295,47 @@ const Students = () => {
               <tbody>
                 {isLoading && (
                   <tr>
-                    <td className="p-4 text-muted-foreground" colSpan={7}>Loading students...</td>
+                    <td className="p-4 text-muted-foreground" colSpan={7}>
+                      <div className="flex items-center justify-center">
+                        <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-primary"></div>
+                        <span className="ml-2">Loading students...</span>
+                      </div>
+                    </td>
                   </tr>
                 )}
-                {!isLoading && filteredStudents.map((student, index) => {
+                {isError && (
+                  <tr>
+                    <td className="p-4 text-destructive" colSpan={7}>
+                      <div className="text-center">
+                        <p className="font-medium">Error loading students</p>
+                        <p className="text-sm text-muted-foreground mt-1">
+                          {error?.message || "Something went wrong. Please try again."}
+                        </p>
+                        <Button 
+                          variant="outline" 
+                          size="sm" 
+                          className="mt-2"
+                          onClick={() => window.location.reload()}
+                        >
+                          Retry
+                        </Button>
+                      </div>
+                    </td>
+                  </tr>
+                )}
+                {!isLoading && !isError && filteredStudents.length === 0 && (
+                  <tr>
+                    <td className="p-4 text-muted-foreground" colSpan={7}>
+                      <div className="text-center">
+                        <p className="font-medium">No students found</p>
+                        <p className="text-sm text-muted-foreground mt-1">
+                          {searchTerm ? "Try adjusting your search criteria." : "No students have been registered yet."}
+                        </p>
+                      </div>
+                    </td>
+                  </tr>
+                )}
+                {!isLoading && !isError && filteredStudents.map((student, index) => {
                   const participation = getParticipationLevel(0);
                   return (
                     <tr key={student.id} className="border-b border-border hover:bg-muted/50 transition-colors animate-scale-in" style={{ animationDelay: `${index * 50}ms` }}>

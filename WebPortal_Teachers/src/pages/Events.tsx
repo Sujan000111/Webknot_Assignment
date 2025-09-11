@@ -8,6 +8,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { supabase, isSupabaseReady } from "@/lib/supabase";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Label } from "@/components/ui/label";
+import { createAllSampleData } from "@/utils/createSampleData";
 
 const Events = () => {
   const [searchTerm, setSearchTerm] = useState("");
@@ -23,17 +24,43 @@ const Events = () => {
     current_registrations: number;
   };
 
-  const { data: events = [], isLoading } = useQuery({
+  const { data: events = [], isLoading, error, isError, refetch } = useQuery({
     queryKey: ["events", { filterType, searchTerm }],
     queryFn: async (): Promise<EventRow[]> => {
-      const { data, error } = await supabase!
+      console.log("Fetching events from Supabase...");
+      if (!supabase) {
+        throw new Error("Supabase client not initialized");
+      }
+      
+      const { data, error } = await supabase
         .from("events")
-        .select("id,title,description,status,start_date,max_capacity,current_registrations")
+        .select(`
+          id,
+          title,
+          description,
+          start_date,
+          end_date,
+          max_capacity,
+          current_registrations,
+          is_featured,
+          status,
+          registration_start,
+          registration_end,
+          created_by
+        `)
         .order("start_date", { ascending: true });
-      if (error) throw error;
+      
+      if (error) {
+        console.error("Supabase error:", error);
+        throw error;
+      }
+      
+      console.log("Events fetched successfully:", data?.length || 0, "events");
       return data ?? [];
     },
     enabled: isSupabaseReady,
+    retry: 2,
+    staleTime: 0, // Disable caching for now
   });
 
   const eventTypes = ["All"]; // Extend when joining event_types
@@ -105,6 +132,7 @@ const Events = () => {
 
   return (
     <div className="space-y-6 animate-fade-up">
+
       {/* Header */}
       <div className="flex flex-col md:flex-row md:items-center md:justify-between space-y-4 md:space-y-0">
         <div>

@@ -1,13 +1,521 @@
-import { useState } from "react";
-import { BarChart, LineChart, Download, Calendar, TrendingUp, Users, Star } from "lucide-react";
+import { useState, useRef } from "react";
+import { BarChart, LineChart, Download, Calendar, TrendingUp, Users, Star, FileText } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useQuery } from "@tanstack/react-query";
 import { supabase, isSupabaseReady } from "@/lib/supabase";
+import jsPDF from "jspdf";
+import html2canvas from "html2canvas";
 
 const Reports = () => {
   const [dateRange, setDateRange] = useState("last30days");
+  const reportRef = useRef<HTMLDivElement>(null);
+
+  // PDF Export Function - Complete Report with Colors and Charts
+  const exportToPDF = async () => {
+    try {
+      const pdf = new jsPDF('p', 'mm', 'a4');
+      const pageWidth = 210;
+      const pageHeight = 295;
+      let yPosition = 20;
+      const lineHeight = 7;
+      const sectionSpacing = 15;
+
+      // Color palette
+      const colors = {
+        primary: '#1e40af',
+        secondary: '#059669',
+        accent: '#dc2626',
+        warning: '#d97706',
+        info: '#7c3aed',
+        success: '#16a34a',
+        lightBlue: '#dbeafe',
+        lightGreen: '#dcfce7',
+        lightRed: '#fee2e2',
+        lightPurple: '#f3e8ff',
+        lightOrange: '#fed7aa',
+        border: '#e5e7eb',
+        text: '#374151',
+        muted: '#6b7280'
+      };
+
+      // Helper function to add colored section header
+      const addSectionHeader = (text: string, color: string = colors.primary) => {
+        if (yPosition > pageHeight - 40) {
+          pdf.addPage();
+          yPosition = 20;
+        }
+        
+        // Background rectangle
+        pdf.setFillColor(color);
+        pdf.rect(15, yPosition - 5, pageWidth - 30, 12, 'F');
+        
+        // Header text
+        pdf.setFontSize(16);
+        pdf.setFont('helvetica', 'bold');
+        pdf.setTextColor('#ffffff');
+        pdf.text(text, 20, yPosition + 2);
+        
+        yPosition += 15;
+      };
+
+      // Helper function to add text with word wrap and colors
+      const addText = (text: string, fontSize: number = 12, isBold: boolean = false, color: string = colors.text) => {
+        pdf.setFontSize(fontSize);
+        pdf.setFont('helvetica', isBold ? 'bold' : 'normal');
+        pdf.setTextColor(color);
+        
+        const lines = pdf.splitTextToSize(text, pageWidth - 40);
+        for (const line of lines) {
+          if (yPosition > pageHeight - 20) {
+            pdf.addPage();
+            yPosition = 20;
+          }
+          pdf.text(line, 20, yPosition);
+          yPosition += lineHeight;
+        }
+      };
+
+      // Helper function to add metric card
+      const addMetricCard = (title: string, value: string, color: string, bgColor: string) => {
+        if (yPosition > pageHeight - 30) {
+          pdf.addPage();
+          yPosition = 20;
+        }
+        
+        // Card background
+        pdf.setFillColor(bgColor);
+        pdf.roundedRect(20, yPosition - 5, 80, 20, 3, 3, 'F');
+        
+        // Card border
+        pdf.setDrawColor(color);
+        pdf.setLineWidth(0.5);
+        pdf.roundedRect(20, yPosition - 5, 80, 20, 3, 3, 'S');
+        
+        // Title
+        pdf.setFontSize(10);
+        pdf.setFont('helvetica', 'normal');
+        pdf.setTextColor(colors.muted);
+        pdf.text(title, 25, yPosition + 2);
+        
+        // Value
+        pdf.setFontSize(14);
+        pdf.setFont('helvetica', 'bold');
+        pdf.setTextColor(color);
+        pdf.text(value, 25, yPosition + 8);
+        
+        yPosition += 25;
+      };
+
+      // Helper function to add colorful table
+      const addColorfulTable = (headers: string[], rows: string[][], title: string, headerColor: string = colors.primary) => {
+        addText(title, 14, true, headerColor);
+        yPosition += 5;
+
+        const colWidths = [60, 40, 30, 30, 30];
+        const tableWidth = colWidths.reduce((sum, width) => sum + width, 0);
+        const startX = 20;
+
+        // Table header background
+        pdf.setFillColor(headerColor);
+        pdf.rect(startX, yPosition - 3, tableWidth, 8, 'F');
+        
+        // Table header text
+        pdf.setFontSize(10);
+        pdf.setFont('helvetica', 'bold');
+        pdf.setTextColor('#ffffff');
+        
+        let xPos = startX;
+        headers.forEach((header, index) => {
+          pdf.text(header, xPos + 2, yPosition + 2);
+          xPos += colWidths[index];
+        });
+        yPosition += 10;
+
+        // Table rows with alternating colors
+        pdf.setFont('helvetica', 'normal');
+        rows.forEach((row, rowIndex) => {
+          if (yPosition > pageHeight - 30) {
+            pdf.addPage();
+            yPosition = 20;
+          }
+          
+          // Alternating row colors
+          if (rowIndex % 2 === 0) {
+            pdf.setFillColor('#f9fafb');
+            pdf.rect(startX, yPosition - 3, tableWidth, 6, 'F');
+          }
+          
+          // Row border
+          pdf.setDrawColor(colors.border);
+          pdf.setLineWidth(0.2);
+          pdf.rect(startX, yPosition - 3, tableWidth, 6, 'S');
+          
+          xPos = startX;
+          pdf.setTextColor(colors.text);
+          row.forEach((cell, index) => {
+            pdf.text(cell, xPos + 2, yPosition + 2);
+            xPos += colWidths[index];
+          });
+          yPosition += 8;
+        });
+        yPosition += sectionSpacing;
+      };
+
+      // Helper function to add simple bar chart
+      const addBarChart = (title: string, data: {label: string, value: number}[], maxValue: number) => {
+        addText(title, 14, true, colors.info);
+        yPosition += 5;
+
+        const chartWidth = 120;
+        const chartHeight = 40;
+        const barWidth = chartWidth / data.length - 2;
+        const startX = 20;
+
+        // Chart background
+        pdf.setFillColor('#f8fafc');
+        pdf.rect(startX, yPosition, chartWidth, chartHeight, 'F');
+        pdf.setDrawColor(colors.border);
+        pdf.setLineWidth(0.5);
+        pdf.rect(startX, yPosition, chartWidth, chartHeight, 'S');
+
+        // Draw bars
+        data.forEach((item, index) => {
+          const barHeight = (item.value / maxValue) * (chartHeight - 10);
+          const barX = startX + (index * (barWidth + 2)) + 1;
+          const barY = yPosition + chartHeight - barHeight - 5;
+          
+          // Bar color based on value
+          const colors_array = [colors.primary, colors.secondary, colors.accent, colors.warning, colors.info];
+          const barColor = colors_array[index % colors_array.length];
+          
+          pdf.setFillColor(barColor);
+          pdf.rect(barX, barY, barWidth, barHeight, 'F');
+          
+          // Value label
+          pdf.setFontSize(8);
+          pdf.setTextColor(colors.text);
+          pdf.text(item.value.toString(), barX + barWidth/2 - 2, barY - 2);
+          
+          // Category label
+          pdf.text(item.label.substring(0, 8), barX + barWidth/2 - 4, yPosition + chartHeight + 5);
+        });
+
+        yPosition += chartHeight + 20;
+      };
+
+      // Title Page with gradient effect
+      pdf.setFillColor(colors.primary);
+      pdf.rect(0, 0, pageWidth, 50, 'F');
+      
+      pdf.setFontSize(24);
+      pdf.setFont('helvetica', 'bold');
+      pdf.setTextColor('#ffffff');
+      pdf.text('CAMPUS EVENTS', 20, 25);
+      pdf.text('COMPREHENSIVE REPORT', 20, 35);
+      
+      pdf.setFontSize(12);
+      pdf.setFont('helvetica', 'normal');
+      pdf.setTextColor('#e0e7ff');
+      pdf.text(`Generated on: ${new Date().toLocaleDateString()}`, 20, 45);
+      
+      yPosition = 60;
+
+      // Key Metrics Section with colorful cards
+      addSectionHeader('KEY METRICS OVERVIEW', colors.secondary);
+      
+      // Create metric cards in a 2x2 grid
+      const metricsData = [
+        { title: 'Total Events', value: `${metrics.totalEvents || 0}`, color: colors.primary, bgColor: colors.lightBlue },
+        { title: 'Total Registrations', value: `${metrics.totalRegistrations || 0}`, color: colors.secondary, bgColor: colors.lightGreen },
+        { title: 'Attendance Rate', value: `${metrics.attendanceRate || 0}%`, color: colors.accent, bgColor: colors.lightRed },
+        { title: 'Avg Feedback', value: `${metrics.avgFeedback || 0}/5.0`, color: colors.warning, bgColor: colors.lightOrange }
+      ];
+      
+      // First row of metrics
+      let currentX = 20;
+      metricsData.slice(0, 2).forEach(metric => {
+        pdf.setFillColor(metric.bgColor);
+        pdf.roundedRect(currentX, yPosition - 5, 80, 20, 3, 3, 'F');
+        pdf.setDrawColor(metric.color);
+        pdf.setLineWidth(0.5);
+        pdf.roundedRect(currentX, yPosition - 5, 80, 20, 3, 3, 'S');
+        
+        pdf.setFontSize(10);
+        pdf.setFont('helvetica', 'normal');
+        pdf.setTextColor(colors.muted);
+        pdf.text(metric.title, currentX + 5, yPosition + 2);
+        
+        pdf.setFontSize(14);
+        pdf.setFont('helvetica', 'bold');
+        pdf.setTextColor(metric.color);
+        pdf.text(metric.value, currentX + 5, yPosition + 8);
+        
+        currentX += 90;
+      });
+      
+      yPosition += 30;
+      
+      // Second row of metrics
+      currentX = 20;
+      metricsData.slice(2, 4).forEach(metric => {
+        pdf.setFillColor(metric.bgColor);
+        pdf.roundedRect(currentX, yPosition - 5, 80, 20, 3, 3, 'F');
+        pdf.setDrawColor(metric.color);
+        pdf.setLineWidth(0.5);
+        pdf.roundedRect(currentX, yPosition - 5, 80, 20, 3, 3, 'S');
+        
+        pdf.setFontSize(10);
+        pdf.setFont('helvetica', 'normal');
+        pdf.setTextColor(colors.muted);
+        pdf.text(metric.title, currentX + 5, yPosition + 2);
+        
+        pdf.setFontSize(14);
+        pdf.setFont('helvetica', 'bold');
+        pdf.setTextColor(metric.color);
+        pdf.text(metric.value, currentX + 5, yPosition + 8);
+        
+        currentX += 90;
+      });
+      
+      yPosition += 35;
+
+      // Event Popularity Report with colorful table
+      if (popularity.length > 0) {
+        const popularityHeaders = ['Event Name', 'Type', 'Date', 'Registrations', 'Attendance'];
+        const popularityRows = popularity.slice(0, 10).map(event => [
+          event.name.substring(0, 25),
+          event.type.substring(0, 15),
+          new Date(event.date).toLocaleDateString(),
+          event.registrations.toString(),
+          event.attendance.toString()
+        ]);
+        addColorfulTable(popularityHeaders, popularityRows, 'EVENT POPULARITY REPORT (Top 10)', colors.primary);
+        
+        // Add bar chart for top 5 events
+        if (popularity.length >= 5) {
+          const chartData = popularity.slice(0, 5).map(event => ({
+            label: event.name.substring(0, 8),
+            value: event.registrations
+          }));
+          const maxRegistrations = Math.max(...chartData.map(d => d.value));
+          addBarChart('Top 5 Events by Registrations', chartData, maxRegistrations);
+        }
+      }
+
+      // Student Participation Report with colorful table
+      if (participation.length > 0) {
+        const participationHeaders = ['Student Name', 'Department', 'Events Attended'];
+        const participationRows = participation.slice(0, 15).map(student => [
+          student.name.substring(0, 25),
+          student.department.substring(0, 20),
+          student.eventsAttended.toString()
+        ]);
+        addColorfulTable(participationHeaders, participationRows, 'STUDENT PARTICIPATION REPORT (Top 15)', colors.secondary);
+      }
+
+      // Top Performers with special styling
+      if (topStudents.length > 0) {
+        addSectionHeader('TOP PERFORMERS', colors.accent);
+        
+        topStudents.slice(0, 3).forEach((student, index) => {
+          const badges = ['🥇', '🥈', '🥉'];
+          const badgeColors = [colors.warning, colors.muted, '#cd7f32']; // Gold, Silver, Bronze
+          
+          // Performer card
+          pdf.setFillColor(colors.lightRed);
+          pdf.roundedRect(20, yPosition - 5, pageWidth - 40, 25, 5, 5, 'F');
+          pdf.setDrawColor(colors.accent);
+          pdf.setLineWidth(1);
+          pdf.roundedRect(20, yPosition - 5, pageWidth - 40, 25, 5, 5, 'S');
+          
+          // Badge
+          pdf.setFontSize(20);
+          pdf.setTextColor(badgeColors[index]);
+          pdf.text(badges[index], 30, yPosition + 8);
+          
+          // Student name
+          pdf.setFontSize(14);
+          pdf.setFont('helvetica', 'bold');
+          pdf.setTextColor(colors.accent);
+          pdf.text(student.name, 50, yPosition + 8);
+          
+          // Department
+          pdf.setFontSize(10);
+          pdf.setFont('helvetica', 'normal');
+          pdf.setTextColor(colors.muted);
+          pdf.text(`Department: ${student.department}`, 50, yPosition + 15);
+          
+          // Events attended
+          pdf.setFontSize(12);
+          pdf.setFont('helvetica', 'bold');
+          pdf.setTextColor(colors.primary);
+          pdf.text(`Events Attended: ${student.eventsAttended}`, 50, yPosition + 20);
+          
+          yPosition += 35;
+        });
+        yPosition += 10;
+      }
+
+      // Event Type Analysis with chart
+      if (eventTypeStats.length > 0) {
+        addSectionHeader('EVENT TYPE ANALYSIS', colors.info);
+        
+        // Create bar chart for event types
+        const chartData = eventTypeStats.map(stat => ({
+          label: stat.type.substring(0, 8),
+          value: stat.count
+        }));
+        const maxCount = Math.max(...chartData.map(d => d.value));
+        addBarChart('Events by Type', chartData, maxCount);
+        
+        // Detailed stats
+        eventTypeStats.forEach((stat, index) => {
+          // Stat card
+          pdf.setFillColor(colors.lightPurple);
+          pdf.roundedRect(20, yPosition - 5, pageWidth - 40, 20, 3, 3, 'F');
+          pdf.setDrawColor(colors.info);
+          pdf.setLineWidth(0.5);
+          pdf.roundedRect(20, yPosition - 5, pageWidth - 40, 20, 3, 3, 'S');
+          
+          pdf.setFontSize(12);
+          pdf.setFont('helvetica', 'bold');
+          pdf.setTextColor(colors.info);
+          pdf.text(`${stat.type}: ${stat.count} events`, 25, yPosition + 5);
+          
+          pdf.setFontSize(10);
+          pdf.setFont('helvetica', 'normal');
+          pdf.setTextColor(colors.muted);
+          pdf.text(`Avg Attendance: ${stat.avgAttendance}% | Avg Feedback: ${stat.avgFeedback}/5.0`, 25, yPosition + 12);
+          
+          yPosition += 25;
+        });
+      }
+
+      // Footer with colorful summary
+      pdf.addPage();
+      yPosition = 20;
+      
+      // Summary header with gradient
+      pdf.setFillColor(colors.primary);
+      pdf.rect(0, 0, pageWidth, 30, 'F');
+      
+      pdf.setFontSize(18);
+      pdf.setFont('helvetica', 'bold');
+      pdf.setTextColor('#ffffff');
+      pdf.text('REPORT SUMMARY', 20, 20);
+      
+      yPosition = 50;
+      
+      // Summary cards
+      const summaryCards = [
+        {
+          title: 'Event Popularity',
+          description: 'Analysis of most successful events by registration count',
+          color: colors.primary,
+          bgColor: colors.lightBlue
+        },
+        {
+          title: 'Student Participation',
+          description: 'Tracking of individual student engagement levels',
+          color: colors.secondary,
+          bgColor: colors.lightGreen
+        },
+        {
+          title: 'Top Performers',
+          description: 'Recognition of most active students',
+          color: colors.accent,
+          bgColor: colors.lightRed
+        },
+        {
+          title: 'Event Type Analysis',
+          description: 'Performance comparison across different event categories',
+          color: colors.info,
+          bgColor: colors.lightPurple
+        }
+      ];
+      
+      summaryCards.forEach((card, index) => {
+        if (yPosition > pageHeight - 40) {
+          pdf.addPage();
+          yPosition = 20;
+        }
+        
+        // Card background
+        pdf.setFillColor(card.bgColor);
+        pdf.roundedRect(20, yPosition - 5, pageWidth - 40, 25, 5, 5, 'F');
+        pdf.setDrawColor(card.color);
+        pdf.setLineWidth(1);
+        pdf.roundedRect(20, yPosition - 5, pageWidth - 40, 25, 5, 5, 'S');
+        
+        // Card title
+        pdf.setFontSize(14);
+        pdf.setFont('helvetica', 'bold');
+        pdf.setTextColor(card.color);
+        pdf.text(card.title, 30, yPosition + 8);
+        
+        // Card description
+        pdf.setFontSize(10);
+        pdf.setFont('helvetica', 'normal');
+        pdf.setTextColor(colors.muted);
+        pdf.text(card.description, 30, yPosition + 16);
+        
+        yPosition += 35;
+      });
+      
+      // System info
+      yPosition += 20;
+      pdf.setFillColor(colors.muted);
+      pdf.rect(20, yPosition - 5, pageWidth - 40, 15, 'F');
+      
+      pdf.setFontSize(12);
+      pdf.setFont('helvetica', 'bold');
+      pdf.setTextColor('#ffffff');
+      pdf.text('Generated by Campus Events Management System', 30, yPosition + 5);
+      
+      pdf.setFontSize(10);
+      pdf.setFont('helvetica', 'normal');
+      pdf.text(`Report generated on ${new Date().toLocaleString()}`, 30, yPosition + 10);
+
+      // Save PDF
+      const currentDate = new Date().toLocaleDateString().replace(/\//g, '-');
+      pdf.save(`Campus_Events_Complete_Report_${currentDate}.pdf`);
+      
+    } catch (error) {
+      console.error('Error generating PDF:', error);
+      alert('Error generating PDF. Please try again.');
+    }
+  };
+
+  // Get real metrics data
+  const { data: metrics = {}, isLoading: loadingMetrics } = useQuery({
+    queryKey: ["report-metrics", dateRange],
+    queryFn: async () => {
+      const [eventsResult, registrationsResult, attendanceResult, feedbackResult] = await Promise.all([
+        supabase!.from("events").select("id", { count: "exact", head: true }),
+        supabase!.from("registrations").select("id", { count: "exact", head: true }),
+        supabase!.from("attendance").select("status"),
+        supabase!.from("feedback").select("rating", { count: "exact" })
+      ]);
+
+      const totalEvents = eventsResult.count || 0;
+      const totalRegistrations = registrationsResult.count || 0;
+      const presentAttendance = attendanceResult.data?.filter(a => a.status === 'present').length || 0;
+      const avgFeedback = feedbackResult.data?.length ? 
+        feedbackResult.data.reduce((sum, f) => sum + f.rating, 0) / feedbackResult.data.length : 0;
+      
+      const attendanceRate = totalRegistrations > 0 ? (presentAttendance / totalRegistrations) * 100 : 0;
+
+      return {
+        totalEvents,
+        totalRegistrations,
+        attendanceRate: Math.round(attendanceRate * 10) / 10,
+        avgFeedback: Math.round(avgFeedback * 10) / 10
+      };
+    },
+    enabled: isSupabaseReady,
+  });
 
   const { data: popularity = [], isLoading: loadingPopularity } = useQuery({
     queryKey: ["report-popularity", dateRange],
@@ -73,12 +581,11 @@ const Reports = () => {
     queryKey: ["report-type-stats", dateRange],
     queryFn: async () => {
       const { data, error } = await supabase!
-        .rpc("get_event_type_analysis")
-        .select();
+        .rpc("get_event_type_analysis");
       if (error) throw error;
-      return data as { type: string; count: number; avgAttendance: number; avgFeedback: number }[] || [];
+      return data as { type: string; count: number; avg_attendance: number; avg_feedback: number }[] || [];
     },
-    enabled: false, // placeholder until RPC is added
+    enabled: isSupabaseReady,
   });
 
   const getEventTypeColor = (type: string) => {
@@ -92,7 +599,8 @@ const Reports = () => {
   };
 
   return (
-    <div className="space-y-6 animate-fade-up">
+    <div ref={reportRef} className="space-y-6 animate-fade-up">
+
       {/* Header */}
       <div className="flex flex-col md:flex-row md:items-center md:justify-between space-y-4 md:space-y-0">
         <div>
@@ -110,6 +618,10 @@ const Reports = () => {
             <option value="last90days">Last 90 Days</option>
             <option value="lastYear">Last Year</option>
           </select>
+          <Button variant="outline" onClick={exportToPDF}>
+            <FileText className="mr-2 h-4 w-4" />
+            Export PDF
+          </Button>
           <Button variant="outline">
             <Download className="mr-2 h-4 w-4" />
             Export Reports
@@ -124,8 +636,10 @@ const Reports = () => {
             <div className="flex items-center justify-between">
               <div>
                 <p className="text-sm font-medium text-muted-foreground">Total Events</p>
-                <p className="text-3xl font-bold text-primary">29</p>
-                <p className="text-xs text-success mt-1">↗ +23% from last month</p>
+                <p className="text-3xl font-bold text-primary">
+                  {loadingMetrics ? "..." : metrics.totalEvents || 0}
+                </p>
+                <p className="text-xs text-muted-foreground mt-1">Active events in system</p>
               </div>
               <Calendar className="h-8 w-8 text-primary/60" />
             </div>
@@ -136,8 +650,10 @@ const Reports = () => {
             <div className="flex items-center justify-between">
               <div>
                 <p className="text-sm font-medium text-muted-foreground">Total Registrations</p>
-                <p className="text-3xl font-bold text-secondary">441</p>
-                <p className="text-xs text-success mt-1">↗ +15% from last month</p>
+                <p className="text-3xl font-bold text-secondary">
+                  {loadingMetrics ? "..." : metrics.totalRegistrations || 0}
+                </p>
+                <p className="text-xs text-muted-foreground mt-1">Student registrations</p>
               </div>
               <Users className="h-8 w-8 text-secondary/60" />
             </div>
@@ -148,8 +664,10 @@ const Reports = () => {
             <div className="flex items-center justify-between">
               <div>
                 <p className="text-sm font-medium text-muted-foreground">Avg Attendance Rate</p>
-                <p className="text-3xl font-bold text-success">84.2%</p>
-                <p className="text-xs text-success mt-1">↗ +3% from last month</p>
+                <p className="text-3xl font-bold text-success">
+                  {loadingMetrics ? "..." : `${metrics.attendanceRate || 0}%`}
+                </p>
+                <p className="text-xs text-muted-foreground mt-1">Overall attendance</p>
               </div>
               <TrendingUp className="h-8 w-8 text-success/60" />
             </div>
@@ -160,8 +678,10 @@ const Reports = () => {
             <div className="flex items-center justify-between">
               <div>
                 <p className="text-sm font-medium text-muted-foreground">Avg Feedback Score</p>
-                <p className="text-3xl font-bold text-warning">4.6</p>
-                <p className="text-xs text-success mt-1">↗ +0.2 from last month</p>
+                <p className="text-3xl font-bold text-warning">
+                  {loadingMetrics ? "..." : metrics.avgFeedback || 0}
+                </p>
+                <p className="text-xs text-muted-foreground mt-1">Out of 5.0</p>
               </div>
               <Star className="h-8 w-8 text-warning/60" />
             </div>
@@ -397,23 +917,23 @@ const Reports = () => {
                       <div className="flex justify-between items-center">
                         <span className="text-muted-foreground">Average Attendance:</span>
                         <span className={`font-bold text-lg ${
-                          stat.avgAttendance >= 85 ? 'text-success' :
-                          stat.avgAttendance >= 70 ? 'text-warning' : 'text-destructive'
+                          stat.avg_attendance >= 85 ? 'text-success' :
+                          stat.avg_attendance >= 70 ? 'text-warning' : 'text-destructive'
                         }`}>
-                          {stat.avgAttendance}%
+                          {stat.avg_attendance || 0}%
                         </span>
                       </div>
                       <div className="flex justify-between items-center">
                         <span className="text-muted-foreground">Average Feedback:</span>
                         <div className="flex items-center">
                           <Star className="h-4 w-4 text-warning mr-1" />
-                          <span className="font-bold text-lg">{stat.avgFeedback}</span>
+                          <span className="font-bold text-lg">{stat.avg_feedback || 0}</span>
                         </div>
                       </div>
                       <div className="w-full bg-muted rounded-full h-2 mt-2">
                         <div 
                           className="bg-gradient-primary h-2 rounded-full transition-all duration-300"
-                          style={{ width: `${stat.avgAttendance}%` }}
+                          style={{ width: `${stat.avg_attendance || 0}%` }}
                         />
                       </div>
                     </div>
