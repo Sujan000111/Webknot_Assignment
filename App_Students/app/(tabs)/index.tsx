@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import {
   View,
   ScrollView,
@@ -48,7 +48,7 @@ export default function HomeScreen() {
   });
   const { appUser } = useAuth();
 
-  const loadEvents = async () => {
+  const loadEvents = useCallback(async () => {
     try {
       setLoading(true);
       const response = await ApiService.getEvents(1, 20);
@@ -62,13 +62,18 @@ export default function HomeScreen() {
       setUpcomingEvents(upcoming);
     } catch (error) {
       console.error('Error loading events:', error);
-      Alert.alert('Error', 'Failed to load events. Please try again.');
+      // Don't show alert on initial load, just log the error
+      if (featuredEvents.length === 0 && upcomingEvents.length === 0) {
+        console.warn('No events loaded - this might be expected if no events exist yet');
+      } else {
+        Alert.alert('Error', 'Failed to load events. Please try again.');
+      }
     } finally {
       setLoading(false);
     }
-  };
+  }, [featuredEvents.length, upcomingEvents.length]);
 
-  const loadStats = async () => {
+  const loadStats = useCallback(async () => {
     try {
       if (!appUser) return;
       
@@ -83,24 +88,24 @@ export default function HomeScreen() {
     } catch (error) {
       console.error('Error loading stats:', error);
     }
-  };
+  }, [appUser]);
 
-  const onRefresh = async () => {
+  const onRefresh = useCallback(async () => {
     setRefreshing(true);
     await Promise.all([loadEvents(), loadStats()]);
     setRefreshing(false);
-  };
+  }, [loadEvents, loadStats]);
 
   useEffect(() => {
     loadEvents();
     loadStats();
-  }, [appUser]);
+  }, [appUser, loadEvents, loadStats]);
 
-  const renderFeaturedEvent = ({ item }: { item: Event }) => (
+  const renderFeaturedEvent = useCallback(({ item }: { item: Event }) => (
     <EventCard event={item} variant="featured" />
-  );
+  ), []);
 
-  const renderCategory = ({ item }: { item: typeof categories[0] }) => (
+  const renderCategory = useCallback(({ item }: { item: typeof categories[0] }) => (
     <TouchableOpacity style={styles.categoryCard}>
       <View style={[styles.categoryIcon, { backgroundColor: item.color }]}>
         <item.icon size={24} color={Colors.background} />
@@ -109,13 +114,14 @@ export default function HomeScreen() {
         {item.name}
       </ThemedText>
     </TouchableOpacity>
-  );
+  ), []);
 
   if (loading) {
     return (
       <SafeAreaView style={styles.container}>
         <View style={styles.loadingContainer}>
-          <ThemedText>Loading events...</ThemedText>
+          <View style={styles.loadingSpinner} />
+          <ThemedText style={styles.loadingText}>Loading events...</ThemedText>
         </View>
       </SafeAreaView>
     );
@@ -238,6 +244,18 @@ const styles = StyleSheet.create({
     flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
+  },
+  loadingSpinner: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    borderWidth: 3,
+    borderColor: Colors.primary,
+    borderTopColor: 'transparent',
+    marginBottom: Layout.spacing.md,
+  },
+  loadingText: {
+    color: Colors.textSecondary,
   },
   header: {
     flexDirection: 'row',

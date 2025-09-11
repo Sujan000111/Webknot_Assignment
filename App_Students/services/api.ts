@@ -260,8 +260,8 @@ export class ApiService {
     const { data: existing } = await supabase
       .from('attendance')
       .select('*')
-      .eq('eventId', eventId)
-      .eq('userId', user.id)
+      .eq('event_id', eventId)
+      .eq('student_id', user.id)
       .single();
 
     if (existing) {
@@ -271,9 +271,9 @@ export class ApiService {
     const { data, error } = await supabase
       .from('attendance')
       .insert({
-        eventId,
-        userId: user.id,
-        checkInTime: new Date().toISOString(),
+        event_id: eventId,
+        student_id: user.id,
+        check_in_time: new Date().toISOString(),
         status: 'present'
       })
       .select()
@@ -292,10 +292,10 @@ export class ApiService {
     const { data, error } = await supabase
       .from('attendance')
       .update({ 
-        checkOutTime: new Date().toISOString() 
+        check_out_time: new Date().toISOString() 
       })
-      .eq('eventId', eventId)
-      .eq('userId', user.id)
+      .eq('event_id', eventId)
+      .eq('student_id', user.id)
       .select()
       .single();
 
@@ -314,8 +314,8 @@ export class ApiService {
     const { data: existing } = await supabase
       .from('feedback')
       .select('*')
-      .eq('eventId', eventId)
-      .eq('userId', user.id)
+      .eq('event_id', eventId)
+      .eq('student_id', user.id)
       .single();
 
     if (existing) {
@@ -325,8 +325,8 @@ export class ApiService {
     const { data, error } = await supabase
       .from('feedback')
       .insert({
-        eventId,
-        userId: user.id,
+        event_id: eventId,
+        student_id: user.id,
         rating,
         comment
       })
@@ -343,8 +343,8 @@ export class ApiService {
     const { data, error } = await supabase
       .from('feedback')
       .select('*')
-      .eq('eventId', eventId)
-      .order('createdAt', { ascending: false });
+      .eq('event_id', eventId)
+      .order('created_at', { ascending: false });
 
     if (error) throw error;
     return data || [];
