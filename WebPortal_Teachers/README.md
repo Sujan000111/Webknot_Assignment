@@ -258,5 +258,5 @@ If you encounter build issues:
 
 ---
 
-*This README was written by a student developer who's still learning. Please excuse any mistakes or incomplete information! 😅*
+
 
