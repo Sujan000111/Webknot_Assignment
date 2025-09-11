@@ -2,7 +2,7 @@
 
 **Author:** Sujan J (1MJ21IS106)  
 **Project:** Campus Event Management Platform - Web Portal  
-**Tech Stack:** React, TypeScript, Vite, Tailwind CSS, Supabase  
+**Tech Stack:** React, TypeScript, Vite, Tailwind CSS, Supabase.  
 
 ---
 
@@ -257,6 +257,7 @@ If you encounter build issues:
 - Verify all dependencies are installed correctly
 
 ---
+
 
 
 
