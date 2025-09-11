@@ -230,7 +230,6 @@ This is a student project, but if you want to contribute:
 
 **Sujan J**  
 **USN:** 1MJ21IS106  
-**Email:** sujan.j@student.mvjce.edu.in  
 
 ---
 
@@ -260,3 +259,4 @@ If you encounter build issues:
 ---
 
 *This README was written by a student developer who's still learning. Please excuse any mistakes or incomplete information! 😅*
+
